@@ -1,0 +1,82 @@
+---
+#- name: Performance Regression Tests for nmeta
+
+#*** Version 0.1.0
+
+#*** Pass variables on the command line to determine the test type:
+#
+#*** Example nmeta baseline:
+#***   ansible-playbook ~/automated_tests/nmeta-full-regression-performance-template.yml --extra-vars "count=30 results_dir=~/results/regression/nmeta-full/20160922222553/performance/ policy_name=main_policy_regression_statistical.yaml pause1=10"
+
+#*** Start by ensuring nmeta is not running then start it:
+- hosts: controllers
+
+  tasks:
+
+    - name: Kill controller ryu processes (nmeta)
+      command: "pkill -f ryu-manager"
+      ignore_errors: True
+
+    - name: Copy specific regression main config file into place
+      command: "cp ~/nmeta/nmeta/config/tests/regression/{{ policy_name }} ~/nmeta/nmeta/config/main_policy.yaml"
+
+    - name: Copy standard regression qos config file into place
+      command: "cp ~/nmeta/nmeta/config/tests/regression/qos_policy_regression.yaml ~/nmeta/nmeta/config/qos_policy.yaml"
+
+    - name: Copy standard config file into place
+      command: "cp ~/nmeta/nmeta/config/tests/config_standard.yaml ~/nmeta/nmeta/config/config.yaml"
+
+    - name: Set PYTHONPATH environment variable
+      shell: "PYTHONPATH=."
+      args:
+        chdir: ~/ryu
+
+    - name: Run Ryu with nmeta on controller in the background
+      shell: "nohup ~/ryu/bin/ryu-manager ~/nmeta/nmeta/nmeta.py &"
+      args:
+        chdir: ~/ryu
+      async: 90000
+      poll: 0
+
+    - name: Check nmeta is running on controller
+      command: "pgrep -f nmeta.py"
+
+    - name: Pause to allow time for switch to connect to controller
+      pause: seconds={{ pause1 }}
+
+#*** Run performance tests from client to server
+- hosts: clients
+
+  tasks:
+
+    - name: Create client results folder
+      file: path={{ results_dir }} state=directory
+
+    # Run hping3 tests
+
+    - name: Run hping3 TCP latency tests
+      shell: "sudo hping3 -c {{ count }} sv1 > {{ results_dir }}/{{ inventory_hostname }}-hping3_output.txt"
+
+    - name: Retrieve hping3 results file
+      fetch: src={{ results_dir }}/{{ inventory_hostname }}-hping3_output.txt dest={{ results_dir }} flat=yes
+
+#*** Retrieve file that holds parameters that test was called with:
+
+- hosts: servers
+
+  tasks:
+
+    - name: Record input variables to file for the record
+      copy: content="nmeta-full-regression-static-template.yml was run with count={{ count }} results_dir={{ results_dir}} policy_name={{ policy_name }} pause1={{ pause1 }}" dest=/tmp/nmeta-full-regression-performance-template.yml.parameters.txt
+
+    - name: Retrieve input variables file
+      fetch: src=/tmp/nmeta-full-regression-performance-template.yml.parameters.txt dest={{ results_dir }} flat=yes
+
+#*** Finish by stopping any Ryu processes:
+- hosts: controllers
+
+  tasks:
+
+    - name: Kill controller ryu processes (nmeta or simple switch etc)
+      command: "pkill -f ryu-manager"
+      ignore_errors: True

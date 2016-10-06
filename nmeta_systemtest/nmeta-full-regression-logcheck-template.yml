@@ -1,0 +1,24 @@
+---
+#- name: Check Syslog for Regression Tests for nmeta
+
+#*** Version 0.1.0
+
+#*** Grep for errors on controller and retrieve output file
+
+#*** Example nmeta baseline:
+#***   ansible-playbook ~/automated_tests/nmeta-full-regression-logcheck-template.yml --extra-vars "results_dir=~/results/regression/nmeta-full/20160922222553/ error_filename=errors_logged.txt"
+
+- hosts: controllers
+
+  tasks:
+
+    - name: remove old output
+      shell: "rm /tmp/{{ error_filename }}"
+      ignore_errors: True
+
+    - name: grep syslog for specific events to file
+      shell: "egrep 'sev=CRITICAL|sev=ERROR' /var/log/nmeta > /tmp/{{ error_filename }}"
+      ignore_errors: True
+
+    - name: Retrieve log output
+      fetch: src=/tmp/{{ error_filename }} dest={{ results_dir }} flat=yes

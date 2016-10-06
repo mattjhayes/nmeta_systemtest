@@ -1,0 +1,21 @@
+---
+#- name: Rotate Syslog for Regression Tests for nmeta
+
+#*** Version 0.1.0
+
+#*** Move nmeta syslog file to .old and touch a new one so that
+#*** nmeta logs can be analysed post test for undesirable log
+#*** entries that indicate a condition that should be fixed
+
+- hosts: controllers
+
+  tasks:
+
+    #*** Archive the log file so that we can later just put our log
+    - name: ct1 Rotate nmeta2 log
+      command: "sudo mv /var/log/nmeta /var/log/nmeta.old"
+      ignore_errors: True
+
+    #*** Rsyslog needs restart after moving the log file
+    - name: ct1 Restart rsyslog
+      command: "sudo service rsyslog restart"
