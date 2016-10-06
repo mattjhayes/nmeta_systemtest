@@ -1,0 +1,162 @@
+---
+#- name: Identity TC Regression Tests for nmeta
+
+#*** Version 0.1.0
+
+#*** Pass variables on the command line to determine the test type:
+#
+#*** Example nmeta baseline:
+#***   ansible-playbook ~/automated_tests/nmeta-full-regression-identity-template.yml --extra-vars "duration=10 results_dir=~/results/regression/nmeta-full/20160922222553/identity/pc1_constrained/20160922223154/ policy_name=main_policy_regression_identity_2.yaml tcp_port=5555 pause1=6 pause2=30 pause3=5"
+
+#*** Start by ensuring nmeta is not running then start it:
+- hosts: controllers
+
+  tasks:
+
+    - name: Kill controller ryu processes (nmeta)
+      command: "pkill -f ryu-manager"
+      ignore_errors: True
+
+    - name: Copy identity regression main config file into place
+      command: "cp ~/nmeta/nmeta/config/tests/regression/{{ policy_name }} ~/nmeta/nmeta/config/main_policy.yaml"
+
+    - name: Copy identity regression qos config file into place
+      command: "cp ~/nmeta/nmeta/config/tests/regression/qos_policy_regression.yaml ~/nmeta/nmeta/config/qos_policy.yaml"
+
+    - name: Copy standard config file into place
+      command: "cp ~/nmeta/nmeta/config/tests/config_standard.yaml ~/nmeta/nmeta/config/config.yaml"
+
+    - name: Set PYTHONPATH environment variable
+      shell: "export PYTHONPATH=~/ryu"
+
+    - name: Run Ryu with nmeta (if required) on controller in the background
+      shell: "cd ~/ryu; PYTHONPATH=. ./bin/ryu-manager ../nmeta/nmeta/nmeta.py &"
+      args:
+        chdir: ~/ryu
+      async: 90000
+      poll: 0
+
+    - name: Check nmeta is running on controller
+      command: "pgrep -f nmeta.py"
+
+    - name: Pause to allow time for switch to connect to controller
+      pause: seconds={{ pause1 }}
+      
+#*** Kill any Iperf on the Server and start Iperf server:
+- hosts: servers
+
+  tasks:
+
+    - name: Kill any running Iperf processes
+      command: "pkill -f iperf"
+      ignore_errors: True
+
+    - name: Start Iperf on Server
+      shell: "iperf -s -p {{ tcp_port }} -i 1"
+      async: 90000
+      poll: 0
+
+    - name: Record input variables to file for the record
+      copy: content="nmeta-full-regression-identity-template.yml was run with duration={{ duration }} results_dir={{ results_dir}} policy_name={{ policy_name }} tcp_port={{ tcp_port }} pause1={{ pause1 }} pause2={{ pause2 }} pause3={{ pause3 }}" dest=/tmp/nmeta-full-regression-identity-template.yml.parameters.txt
+
+#*** Ensure PCs in clean state, generate results timestamp and run tests:
+- hosts: clients
+
+  tasks:
+
+    - name: Pause to allow environment to settle and LLDP to be learnt
+      # Allow time for LLDP to be learnt
+      pause: seconds={{ pause2 }}
+
+    - name: Kill any running Iperf processes
+      command: "pkill -f iperf"
+      ignore_errors: True
+
+    - debug: msg="Result folder will be {{ results_dir }}"
+
+    - debug: msg="Creating local and remote result folders..."
+
+    - name: Create client results folder
+      file: path={{ results_dir }} state=directory
+
+    - name: Run Iperf test from Client
+      shell: "iperf -c sv1 -p {{ tcp_port }} -t {{ duration }} -y c > {{ results_dir }}/{{ inventory_hostname }}-iperf_result.txt"
+      
+    - name: Retrieve Iperf results
+      fetch: src={{ results_dir }}/{{ inventory_hostname }}-iperf_result.txt dest={{ results_dir }} flat=yes
+
+#*** Dump and retrieve the Switch Flow Table for the record:
+
+- hosts: switches
+
+  tasks:
+
+    - name: Create switch results folder
+      file: path={{ results_dir }} state=directory
+
+    - name: Dump the Switch Flow Table
+      shell: "sudo ovs-ofctl dump-flows br0 -O OpenFlow13 > {{ results_dir }}/{{ inventory_hostname }}-pc1-flows.txt"
+
+    - name: Retrieve the Switch Flow Table
+      fetch: src={{ results_dir }}/{{ inventory_hostname }}-pc1-flows.txt dest={{ results_dir }} flat=yes
+
+    - name: Pause after pc1 test before starting lg1 test
+      pause: seconds={{ pause3 }}
+
+#*** Ensure Load Generators in clean state and run tests:
+- hosts: load-generators
+
+  tasks:
+
+    - name: Kill any running Iperf processes on load generator
+      command: "pkill -f iperf"
+      ignore_errors: True
+
+    - name: Create load generator results folder
+      file: path={{ results_dir }} state=directory
+
+    - name: Run Iperf test from load generator
+      shell: "iperf -c sv1 -p {{ tcp_port }} -t {{ duration }} -y c > {{ results_dir }}/{{ inventory_hostname }}-iperf_result.txt"
+
+    - name: Retrieve Iperf results from load generator
+      fetch: src={{ results_dir }}/{{ inventory_hostname }}-iperf_result.txt dest={{ results_dir }} flat=yes
+
+#*** Dump and retrieve the Switch Flow Table for the record:
+
+- hosts: switches
+
+  tasks:
+
+    - name: Dump the Switch Flow Table
+      shell: "sudo ovs-ofctl dump-flows br0 -O OpenFlow13 > {{ results_dir }}/{{ inventory_hostname }}-lg1-flows.txt"
+
+    - name: Retrieve the Switch Flow Table
+      fetch: src={{ results_dir }}/{{ inventory_hostname }}-lg1-flows.txt dest={{ results_dir }} flat=yes
+
+
+#*** Retrieve file that holds parameters that test was called with:
+
+- hosts: servers
+
+  tasks:
+
+    - name: Retrieve input variables file
+      fetch: src=/tmp/nmeta-full-regression-identity-template.yml.parameters.txt dest={{ results_dir }} flat=yes
+
+#*** Retrieve copy of main policy file that was used:
+- hosts: controllers
+
+  tasks:
+
+    - name: Retrieve the main policy file
+      fetch: src=~/nmeta/nmeta/config/main_policy.yaml dest={{ results_dir }} flat=yes
+
+#*** Finish by stopping any Ryu processes:
+
+- hosts: controllers
+
+  tasks:
+
+    - name: Kill controller ryu processes (nmeta or simple switch etc)
+      command: "pkill -f ryu-manager"
+      ignore_errors: True

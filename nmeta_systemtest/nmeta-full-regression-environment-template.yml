@@ -1,0 +1,18 @@
+---
+#- name: Capture environment parameters for Regression Tests for nmeta
+
+#*** Version 0.1.0
+
+#*** Example nmeta baseline:
+#***   ansible-playbook ~/automated_tests/nmeta-full-regression-environment-template.yml --extra-vars "results_dir=~/results/regression/nmeta-full/20160922222553/"
+
+#*** Get info about nmeta build:
+- hosts: controllers
+
+  tasks:
+
+    - name: Get nmeta github branch info 
+      shell: "cd ~/nmeta; git status > /tmp/nmeta_git_status.txt"
+
+    - name: Retrieve nmeta github branch info
+      fetch: src=/tmp/nmeta_git_status.txt dest={{ results_dir }} flat=yes
