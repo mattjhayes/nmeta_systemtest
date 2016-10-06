@@ -109,7 +109,8 @@ LOG_ERROR_FILENAME = 'errors_logged.txt'
 
 #*** Ansible Playbook directory:
 HOME_DIR = expanduser("~")
-PLAYBOOK_DIR = os.path.join(HOME_DIR, 'automated_tests')
+PLAYBOOK_DIR = os.path.join(HOME_DIR,
+                                    'nmeta_systemtest/nmeta_systemtest')
 
 def main():
     """
@@ -150,9 +151,6 @@ def main():
     formatter = logging.Formatter(LOGGING_FILE_FORMAT)
     logging_fh.setFormatter(formatter)
     logger.addHandler(logging_fh)
-
-    #*** TEMP:
-    regression_performance(logger, basedir)
 
     #*** Capture environment settings:
     regression_environment(logger, basedir)
