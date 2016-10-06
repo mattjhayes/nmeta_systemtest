@@ -18,7 +18,7 @@ Run full suite of nmeta system regression tests
 in an easy automated manner to make regression testing
 nmeta updates a breeze...
 
-Designed to fails as soon as there is an issue to avoid
+Designed to fail as soon as there is an issue to avoid
 unnecessary time waiting to be advised of regression issue that
 needs fixing
 
