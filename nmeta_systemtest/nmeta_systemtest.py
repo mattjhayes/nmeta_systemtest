@@ -156,9 +156,6 @@ def main():
     logging_fh.setFormatter(formatter)
     logger.addHandler(logging_fh)
 
-    # TEMP:
-    regression_performance(logger, basedir)
-
     #*** Capture environment settings:
     record_environment(logger, basedir)
 
@@ -222,7 +219,7 @@ def test_static_tc(logger, basedir):
                         'pause1': str(STATIC_PAUSE_SWITCH2CONTROLLER)}
             playbook_cmd = build_playbook(STATIC_PLAYBOOK,
                                             extra_vars, logger)
-            logger.info("running Ansible playbook...")
+            logger.debug("running Ansible playbook...")
             os.system(playbook_cmd)
 
             #*** Analyse static regression results:
@@ -253,7 +250,7 @@ def test_static_tc(logger, basedir):
             #*** Check for any logs that are CRITICAL or ERROR:
             check_log(logger, test_dir)
 
-            logger.info("Sleeping... zzzz")
+            logger.debug("Sleeping... zzzz")
             time.sleep(STATIC_SLEEP)
 
 def test_identity_tc(logger, basedir):
@@ -294,7 +291,7 @@ def test_identity_tc(logger, basedir):
                         'pause3': str(IDENTITY_PAUSE3_INTERTEST)}
             playbook_cmd = build_playbook(IDENTITY_PLAYBOOK,
                                             extra_vars, logger)
-            logger.info("running Ansible playbook...")
+            logger.debug("running Ansible playbook...")
             os.system(playbook_cmd)
 
             #*** Analyse identity regression results:
@@ -325,7 +322,7 @@ def test_identity_tc(logger, basedir):
             #*** Check for any logs that are CRITICAL or ERROR:
             check_log(logger, test_dir)
 
-            logger.info("Sleeping... zzzz")
+            logger.debug("Sleeping... zzzz")
             time.sleep(IDENTITY_SLEEP)
 
 def test_statistical_tc(logger, basedir):
@@ -365,7 +362,7 @@ def test_statistical_tc(logger, basedir):
                                str(STATISTICAL_PAUSE_SWITCH2CONTROLLER)}
             playbook_cmd = build_playbook(STATISTICAL_PLAYBOOK,
                                             extra_vars, logger)
-            logger.info("running Ansible playbook...")
+            logger.debug("running Ansible playbook...")
             os.system(playbook_cmd)
 
             #*** Analyse statistical regression results:
@@ -396,7 +393,7 @@ def test_statistical_tc(logger, basedir):
             #*** Check for any logs that are CRITICAL or ERROR:
             check_log(logger, test_dir)
 
-            logger.info("Sleeping... zzzz")
+            logger.debug("Sleeping... zzzz")
             time.sleep(STATISTICAL_SLEEP)
 
 def regression_performance(logger, basedir):
@@ -430,7 +427,7 @@ def regression_performance(logger, basedir):
                                str(PERFORMANCE_PAUSE_SWITCH2CONTROLLER)}
         playbook_cmd = build_playbook(PERFORMANCE_PLAYBOOK,
                                             extra_vars, logger)
-        logger.info("running Ansible playbook...")
+        logger.debug("running Ansible playbook...")
         os.system(playbook_cmd)
 
         #*** Read in and analyse hping3 RTT performance results:
@@ -443,7 +440,7 @@ def regression_performance(logger, basedir):
         #*** Check for any logs that are CRITICAL or ERROR:
         check_log(logger, test_dir)
 
-        logger.info("Sleeping... zzzz")
+        logger.debug("Sleeping... zzzz")
         time.sleep(PERFORMANCE_SLEEP)
 
 #==================== helper functions ====================
@@ -499,11 +496,9 @@ def hping3_read_line(hping3_line):
     #*** Extract hping3 time from the line:
     #***  Example: len=46 ip=10.1.0.2 ttl=64 DF id=36185 sport=0
     #***  flags=RA seq=6 win=0 rtt=9.1 ms
-    print ("checking match against", hping3_line)
     hping3_match = \
                 re.search(r"rtt=(\S+)", hping3_line)
     if hping3_match:
-        print ("matched", hping3_match.groups()[0])
         result = hping3_match.groups()[0]
         #*** Turn ms into seconds:
         result = float(result) / 1000
@@ -516,11 +511,11 @@ def rotate_log(logger):
     Run an Ansible playbook to rotate the nmeta log
     so that it is fresh for analysis post test
     """
-    logger.info("Rotating nmeta syslog output for freshness")
+    logger.debug("Rotating nmeta syslog output for freshness")
     extra_vars = {}
     playbook_cmd = build_playbook(LOGROTATE_PLAYBOOK, extra_vars,
                                                                 logger)
-    logger.info("running Ansible playbook...")
+    logger.debug("running Ansible playbook...")
     os.system(playbook_cmd)
 
 def check_log(logger, test_dir):
@@ -528,12 +523,12 @@ def check_log(logger, test_dir):
     Check the nmeta log file to see if it has any log events that
     should cause the test to fail so that code can be fixed
     """
-    logger.info("Checking nmeta syslog for error or critical messages")
+    logger.debug("Checking nmeta syslog for error or critical messages")
     extra_vars = {'results_dir': test_dir + "/",
                 'error_filename': LOG_ERROR_FILENAME}
     playbook_cmd = build_playbook(LOGCHECK_PLAYBOOK, extra_vars,
                                                                 logger)
-    logger.info("running Ansible playbook...")
+    logger.debug("running Ansible playbook...")
     os.system(playbook_cmd)
     #*** Presence of non-zero file indicates ERROR and/or CRITICAL logs:
     error_file = os.path.join(test_dir, LOG_ERROR_FILENAME)
