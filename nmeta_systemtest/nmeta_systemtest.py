@@ -39,6 +39,9 @@ import logging
 import logging.handlers
 import coloredlogs
 
+#*** Regular Expressions import:
+import re
+
 #*** Filename for results to be written to:
 RESULTS_DIR = 'nmeta_systemtest_results'
 LOGGING_FILENAME = 'test_results.txt'
@@ -75,8 +78,8 @@ IDENTITY_PAUSE1_SWITCH2CONTROLLER = 10
 IDENTITY_PAUSE2_LLDPLEARN = 30
 IDENTITY_PAUSE3_INTERTEST = 6
 IDENTITY_SLEEP = 30
-IDENTITY_TEST_FILES = ["lg1.example.com-iperf_result.txt",
-                    "pc1.example.com-iperf_result.txt"]
+IDENTITY_TEST_FILES = ['lg1.example.com-iperf_result.txt',
+                    'pc1.example.com-iperf_result.txt']
 IDENTITY_THRESHOLD_CONSTRAINED = 200000
 IDENTITY_THRESHOLD_UNCONSTRAINED = 1000000
 
@@ -90,7 +93,7 @@ STATISTICAL_PLAYBOOK = 'nmeta-full-regression-statistical-template.yml'
 STATISTICAL_TCP_PORT = 5555
 STATISTICAL_PAUSE_SWITCH2CONTROLLER = 10
 STATISTICAL_SLEEP = 30
-STATISTICAL_TEST_FILES = ["pc1.example.com-iperf_result.txt",]
+STATISTICAL_TEST_FILES = ['pc1.example.com-iperf_result.txt',]
 STATISTICAL_THRESHOLD_CONSTRAINED = 280000
 STATISTICAL_THRESHOLD_UNCONSTRAINED = 1000000
 
@@ -100,6 +103,7 @@ PERFORMANCE_TESTS = ['static', 'identity', 'statistical']
 PERFORMANCE_COUNT = 30
 PERFORMANCE_PLAYBOOK = 'nmeta-full-regression-performance-template.yml'
 PERFORMANCE_PAUSE_SWITCH2CONTROLLER = 10
+PERFORMANCE_HPING3_FILENAME = 'pc1.example.com-hping3_output.txt'
 PERFORMANCE_SLEEP = 30
 
 #*** Parameters for analysis of nmeta syslog events:
@@ -152,17 +156,20 @@ def main():
     logging_fh.setFormatter(formatter)
     logger.addHandler(logging_fh)
 
+    # TEMP:
+    regression_performance(logger, basedir)
+
     #*** Capture environment settings:
-    regression_environment(logger, basedir)
+    record_environment(logger, basedir)
 
-    #*** Run static regression testing:
-    regression_static(logger, basedir)
+    #*** Run static traffic classification testing:
+    test_static_tc(logger, basedir)
 
-    #*** Run identity regression testing:
-    regression_identity(logger, basedir)
+    #*** Run identity traffic classification testing:
+    test_identity_tc(logger, basedir)
 
     #*** Run statistical regression testing:
-    regression_statistical(logger, basedir)
+    test_statistical_tc(logger, basedir)
 
     #*** Run performance baseline tests:
     regression_performance(logger, basedir)
@@ -171,7 +178,7 @@ def main():
     logger.info("All testing finished, that's a PASS!")
     logger.info("See test report at %s/%s", basedir, LOGGING_FILENAME)
 
-def regression_environment(logger, basedir):
+def record_environment(logger, basedir):
     """
     Capture details of the environment including info
     on the nmeta build
@@ -181,9 +188,9 @@ def regression_environment(logger, basedir):
                                                                 logger)
     os.system(playbook_cmd)
 
-def regression_static(logger, basedir):
+def test_static_tc(logger, basedir):
     """
-    Nmeta static classification regression testing
+    Run nmeta static traffic classification test(s)
     """
     logger.info("running static regression testing")
     subdir = 'static'
@@ -249,9 +256,9 @@ def regression_static(logger, basedir):
             logger.info("Sleeping... zzzz")
             time.sleep(STATIC_SLEEP)
 
-def regression_identity(logger, basedir):
+def test_identity_tc(logger, basedir):
     """
-    Nmeta identity classification regression testing
+    Run nmeta identity traffic classification test(s)
     """
     logger.info("running identity regression testing")
     subdir = 'identity'
@@ -321,9 +328,9 @@ def regression_identity(logger, basedir):
             logger.info("Sleeping... zzzz")
             time.sleep(IDENTITY_SLEEP)
 
-def regression_statistical(logger, basedir):
+def test_statistical_tc(logger, basedir):
     """
-    Nmeta statistical classification regression testing
+    Run nmeta statistical traffic classification test(s)
     """
     logger.info("running statistical regression testing")
     subdir = 'statistical'
@@ -426,9 +433,12 @@ def regression_performance(logger, basedir):
         logger.info("running Ansible playbook...")
         os.system(playbook_cmd)
 
-        #*** Analyse performance results:
-
-        # TBD
+        #*** Read in and analyse hping3 RTT performance results:
+        rtt_results = hping3_read_results(os.path.join(test_dir,
+                                           PERFORMANCE_HPING3_FILENAME))
+        logger.debug("Performance results are %s", rtt_results)
+        rtt_avg = sum(rtt_results) / float(len(rtt_results))
+        logger.info("rtt_avg=%s rtt_max=%s", rtt_avg, max(rtt_results))
 
         #*** Check for any logs that are CRITICAL or ERROR:
         check_log(logger, test_dir)
@@ -466,6 +476,40 @@ def build_playbook(playbook_name, extra_vars, logger):
         playbook_cmd += "\""
     logger.debug("playbook_cmd=%s", playbook_cmd)
     return playbook_cmd
+
+def hping3_read_results(filename):
+    """
+    Passed a full path filename. Open this file and process
+    it line by line, accumulating valid RTT results into a
+    list and returning it
+    """
+    results = []
+    with open(filename, 'r') as filehandle:
+        for line in filehandle.readlines():
+            hping3_result = hping3_read_line(line)
+            if hping3_result:
+                results.append(hping3_result)
+    return results
+
+def hping3_read_line(hping3_line):
+    """
+    Passed a line from the hping3 output file and return the
+    result if it exists, otherwise 0.
+    """
+    #*** Extract hping3 time from the line:
+    #***  Example: len=46 ip=10.1.0.2 ttl=64 DF id=36185 sport=0
+    #***  flags=RA seq=6 win=0 rtt=9.1 ms
+    print ("checking match against", hping3_line)
+    hping3_match = \
+                re.search(r"rtt=(\S+)", hping3_line)
+    if hping3_match:
+        print ("matched", hping3_match.groups()[0])
+        result = hping3_match.groups()[0]
+        #*** Turn ms into seconds:
+        result = float(result) / 1000
+        return result
+    else:
+        return 0
 
 def rotate_log(logger):
     """
