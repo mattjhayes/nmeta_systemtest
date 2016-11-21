@@ -20,8 +20,8 @@
     - name: Copy statistical regression main config file into place
       command: "cp ~/nmeta/nmeta/config/tests/regression/{{ policy_name }} ~/nmeta/nmeta/config/main_policy.yaml"
 
-    - name: Copy statistical regression qos config file into place
-      command: "cp ~/nmeta/nmeta/config/tests/regression/qos_policy_regression.yaml ~/nmeta/nmeta/config/qos_policy.yaml"
+    #- name: Copy statistical regression qos config file into place
+    #  command: "cp ~/nmeta/nmeta/config/tests/regression/qos_policy_regression.yaml ~/nmeta/nmeta/config/qos_policy.yaml"
 
     - name: Copy standard config file into place
       command: "cp ~/nmeta/nmeta/config/tests/config_standard.yaml ~/nmeta/nmeta/config/config.yaml"

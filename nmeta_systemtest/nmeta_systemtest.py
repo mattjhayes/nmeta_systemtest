@@ -94,7 +94,7 @@ STATISTICAL_TCP_PORT = 5555
 STATISTICAL_PAUSE_SWITCH2CONTROLLER = 10
 STATISTICAL_SLEEP = 30
 STATISTICAL_TEST_FILES = ['pc1.example.com-iperf_result.txt',]
-STATISTICAL_THRESHOLD_CONSTRAINED = 280000
+STATISTICAL_THRESHOLD_CONSTRAINED = 400000
 STATISTICAL_THRESHOLD_UNCONSTRAINED = 1000000
 
 #*** Parameters for performance testing:
@@ -159,6 +159,9 @@ def main():
     #*** Capture environment settings:
     record_environment(logger, basedir)
 
+    #*** Run performance baseline tests:
+    regression_performance(logger, basedir)
+
     #*** Run static traffic classification testing:
     test_static_tc(logger, basedir)
 
@@ -167,9 +170,6 @@ def main():
 
     #*** Run statistical regression testing:
     test_statistical_tc(logger, basedir)
-
-    #*** Run performance baseline tests:
-    regression_performance(logger, basedir)
 
     #*** And we're done!:
     logger.info("All testing finished, that's a PASS!")
