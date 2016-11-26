@@ -42,7 +42,7 @@
     - name: Pause to allow time for switch to connect to controller
       pause: seconds={{ pause1 }}
       
-#*** Kill any Iperf on the Server and start Iperf server:
+#*** Kill any Iperf on the Server, start Iperf server and clear ARP:
 - hosts: servers
 
   tasks:
@@ -58,6 +58,27 @@
 
     - name: Record input variables to file for the record
       copy: content="nmeta-full-regression-identity-template.yml was run with duration={{ duration }} results_dir={{ results_dir}} policy_name={{ policy_name }} tcp_port={{ tcp_port }} pause1={{ pause1 }} pause2={{ pause2 }} pause3={{ pause3 }}" dest=/tmp/nmeta-full-regression-identity-template.yml.parameters.txt
+
+    #*** delete cached ARP entries so that server will re-ARP and
+    #***  nmeta can learn the MAC-to-IP mappings:
+
+    - name: Delete pc1 ARP
+      command: "sudo arp -d 10.1.0.1"
+      ignore_errors: True
+
+    - name: Delete lg1 ARP
+      command: "sudo arp -d 10.1.0.6"
+      ignore_errors: True
+
+    #*** PING to ensure ARP is redone so nmeta learns it:
+
+    - name: PING pc1 to ARP it
+      command: "ping -c 1 10.1.0.1"
+      ignore_errors: True
+
+    - name: PING lg1 to ARP it
+      command: "ping -c 1 10.1.0.6"
+      ignore_errors: True
 
 #*** Ensure PCs in clean state, generate results timestamp and run tests:
 - hosts: clients
