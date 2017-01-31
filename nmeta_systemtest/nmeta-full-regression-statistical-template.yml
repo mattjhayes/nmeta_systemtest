@@ -18,13 +18,7 @@
       ignore_errors: True
 
     - name: Copy statistical regression main config file into place
-      command: "cp ~/nmeta/nmeta/config/tests/regression/{{ policy_name }} ~/nmeta/nmeta/config/main_policy.yaml"
-
-    #- name: Copy statistical regression qos config file into place
-    #  command: "cp ~/nmeta/nmeta/config/tests/regression/qos_policy_regression.yaml ~/nmeta/nmeta/config/qos_policy.yaml"
-
-    - name: Copy standard config file into place
-      command: "cp ~/nmeta/nmeta/config/tests/config_standard.yaml ~/nmeta/nmeta/config/config.yaml"
+      command: "cp ~/nmeta/nmeta/config/tests/regression/{{ policy_name }} ~/nmeta/nmeta/config/user/main_policy.yaml"
 
     - name: Set PYTHONPATH environment variable
       shell: "export PYTHONPATH=~/ryu"
@@ -122,3 +116,6 @@
     - name: Kill controller ryu processes (nmeta or simple switch etc)
       command: "pkill -f ryu-manager"
       ignore_errors: True
+
+    - name: Remove user main config file
+      command: "rm ~/nmeta/nmeta/config/user/main_policy.yaml"
