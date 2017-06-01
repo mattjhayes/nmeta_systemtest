@@ -20,13 +20,8 @@
     - name: Copy statistical regression main config file into place
       command: "cp ~/nmeta/nmeta/config/tests/regression/{{ policy_name }} ~/nmeta/nmeta/config/user/main_policy.yaml"
 
-    - name: Set PYTHONPATH environment variable
-      shell: "export PYTHONPATH=~/ryu"
-
     - name: Run Ryu with nmeta (if required) on controller in the background
-      shell: "cd ~/ryu; PYTHONPATH=. ./bin/ryu-manager ../nmeta/nmeta/nmeta.py &"
-      args:
-        chdir: ~/ryu
+      shell: "nohup /usr/bin/python ~/.local/bin/ryu-manager ~/nmeta/nmeta/nmeta.py &"
       async: 90000
       poll: 0
 
