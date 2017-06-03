@@ -159,7 +159,7 @@
   tasks:
 
     - name: Retrieve the main policy file
-      fetch: src=~/nmeta/nmeta/config/main_policy.yaml dest={{ results_dir }} flat=yes
+      fetch: src=~/nmeta/nmeta/config/user/main_policy.yaml dest={{ results_dir }} flat=yes
 
 #*** Finish by stopping any Ryu processes:
 

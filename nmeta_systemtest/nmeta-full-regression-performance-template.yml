@@ -11,6 +11,9 @@
 #*** Start by ensuring nmeta is not running then start it:
 - hosts: controllers
 
+  environment:
+    PYTHONPATH: "~/nmeta/nmeta"
+
   tasks:
 
     - name: Kill controller ryu processes (nmeta)
