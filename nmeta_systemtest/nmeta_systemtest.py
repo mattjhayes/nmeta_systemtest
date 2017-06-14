@@ -52,6 +52,22 @@ LOGGING_FILE_FORMAT = "%(asctime)s %(levelname)s: " \
 #*** Parameters for capture of environment configuration:
 ENVIRONMENT_PLAYBOOK = 'nmeta-full-regression-environment-template.yml'
 
+#*** Parameters for regression of Locations classification:
+LOCATIONS_REPEATS = 1
+LOCATIONS_TESTS = ["lg1-constrained-bw", "pc1-constrained-bw"]
+LOCATIONS_POLICY_1 = 'main_policy_regression_locations.yaml'
+LOCATIONS_POLICY_2 = 'main_policy_regression_locations_2.yaml'
+LOCATIONS_DURATION = 10
+LOCATIONS_PLAYBOOK = 'nmeta-full-regression-locations-template.yml'
+LOCATIONS_TCP_PORT = 5555
+LOCATIONS_PAUSE1_SWITCH2CONTROLLER = 10
+LOCATIONS_PAUSE3_INTERTEST = 6
+LOCATIONS_SLEEP = 30
+LOCATIONS_TEST_FILES = ['lg1.example.com-iperf_result.txt',
+                    'pc1.example.com-iperf_result.txt']
+LOCATIONS_THRESHOLD_CONSTRAINED = 200000
+LOCATIONS_THRESHOLD_UNCONSTRAINED = 1000000
+
 #*** Parameters for regression of Static classification:
 STATIC_REPEATS = 1
 STATIC_TESTS = ["constrained-bw-tcp1234", "constrained-bw-tcp5555"]
@@ -162,6 +178,9 @@ def main():
     #*** Run performance baseline tests:
     regression_performance(logger, basedir)
 
+    #*** Run locations traffic classification testing:
+    test_locations_tc(logger, basedir)
+
     #*** Run static traffic classification testing:
     test_static_tc(logger, basedir)
 
@@ -184,6 +203,78 @@ def record_environment(logger, basedir):
     playbook_cmd = build_playbook(ENVIRONMENT_PLAYBOOK, extra_vars,
                                                                 logger)
     os.system(playbook_cmd)
+
+def test_locations_tc(logger, basedir):
+    """
+    Run nmeta locations traffic classification test(s)
+    """
+    logger.info("running locations regression testing")
+    subdir = 'locations'
+    #*** Create subdirectory to write results to:
+    os.chdir(basedir)
+    os.mkdir(subdir)
+    test_basedir = os.path.join(basedir, subdir)
+    #*** Run tests
+    for i in range(LOCATIONS_REPEATS):
+        logger.debug("iteration %s of %s", i+1, LOCATIONS_REPEATS)
+        for test in LOCATIONS_TESTS:
+            #*** Timestamp for specific test subdirectory:
+            timenow = datetime.datetime.now()
+            testdir_timestamp = timenow.strftime("%Y%m%d%H%M%S")
+            logger.info("running test=%s", test)
+            test_dir = os.path.join(test_basedir, test,
+                                                    testdir_timestamp)
+            rotate_log(logger)
+            if test == "lg1-constrained-bw":
+                policy_name = LOCATIONS_POLICY_1
+            elif test == "pc1-constrained-bw":
+                policy_name = LOCATIONS_POLICY_2
+            else:
+                logger.critical("ERROR: unknown locations test %s",
+                                                                   test)
+                sys.exit()
+            extra_vars = {'duration': str(LOCATIONS_DURATION),
+                        'results_dir': test_dir + "/",
+                        'policy_name': policy_name,
+                        'tcp_port': str(LOCATIONS_TCP_PORT),
+                        'pause1':
+                                str(LOCATIONS_PAUSE1_SWITCH2CONTROLLER),
+                        'pause3': str(LOCATIONS_PAUSE3_INTERTEST)}
+            playbook_cmd = build_playbook(LOCATIONS_PLAYBOOK,
+                                            extra_vars, logger)
+            logger.debug("running Ansible playbook for locations...")
+            os.system(playbook_cmd)
+
+            #*** Analyse locations regression results:
+            logger.debug("Reading results in directory %s", test_dir)
+            results = {}
+            for filename in LOCATIONS_TEST_FILES:
+                results[filename] = get_iperf_bw(test_dir, filename)
+
+            #*** Validate that the results are as expected:
+            if test == LOCATIONS_TESTS[0]:
+                constrained = results[LOCATIONS_TEST_FILES[0]]
+                unconstrained = results[LOCATIONS_TEST_FILES[1]]
+            elif test == LOCATIONS_TESTS[1]:
+                constrained = results[LOCATIONS_TEST_FILES[1]]
+                unconstrained = results[LOCATIONS_TEST_FILES[0]]
+            else:
+                #*** Unknown error condition:
+                logger.critical("UNKNOWN TEST TYPE. test=%s", test)
+                sys.exit("Please fix this test code. Exiting...")
+            logger.info("validating bw constrained=%s unconstrained=%s",
+                                             constrained, unconstrained)
+            assert constrained < LOCATIONS_THRESHOLD_CONSTRAINED
+            assert unconstrained > LOCATIONS_THRESHOLD_UNCONSTRAINED
+            logger.info("LOCATIONS TC TEST PASSED. test=%s", test)
+            logger.info("bandwidth constrained=%s unconstrained=%s",
+                                constrained, unconstrained)
+
+            #*** Check for any logs that are CRITICAL or ERROR:
+            check_log(logger, test_dir)
+
+            logger.debug("Sleeping... zzzz")
+            time.sleep(LOCATIONS_SLEEP)
 
 def test_static_tc(logger, basedir):
     """
