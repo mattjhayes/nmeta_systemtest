@@ -39,6 +39,9 @@ import logging
 import logging.handlers
 import coloredlogs
 
+#*** Regular Expressions import:
+import re
+
 #*** Filename for results to be written to:
 RESULTS_DIR = 'nmeta_systemtest_results'
 LOGGING_FILENAME = 'test_results.txt'
@@ -48,6 +51,22 @@ LOGGING_FILE_FORMAT = "%(asctime)s %(levelname)s: " \
 
 #*** Parameters for capture of environment configuration:
 ENVIRONMENT_PLAYBOOK = 'nmeta-full-regression-environment-template.yml'
+
+#*** Parameters for regression of Locations classification:
+LOCATIONS_REPEATS = 1
+LOCATIONS_TESTS = ["lg1-constrained-bw", "pc1-constrained-bw"]
+LOCATIONS_POLICY_1 = 'main_policy_regression_locations.yaml'
+LOCATIONS_POLICY_2 = 'main_policy_regression_locations_2.yaml'
+LOCATIONS_DURATION = 10
+LOCATIONS_PLAYBOOK = 'nmeta-full-regression-locations-template.yml'
+LOCATIONS_TCP_PORT = 5555
+LOCATIONS_PAUSE1_SWITCH2CONTROLLER = 10
+LOCATIONS_PAUSE3_INTERTEST = 6
+LOCATIONS_SLEEP = 30
+LOCATIONS_TEST_FILES = ['lg1.example.com-iperf_result.txt',
+                    'pc1.example.com-iperf_result.txt']
+LOCATIONS_THRESHOLD_CONSTRAINED = 200000
+LOCATIONS_THRESHOLD_UNCONSTRAINED = 1000000
 
 #*** Parameters for regression of Static classification:
 STATIC_REPEATS = 1
@@ -75,8 +94,8 @@ IDENTITY_PAUSE1_SWITCH2CONTROLLER = 10
 IDENTITY_PAUSE2_LLDPLEARN = 30
 IDENTITY_PAUSE3_INTERTEST = 6
 IDENTITY_SLEEP = 30
-IDENTITY_TEST_FILES = ["lg1.example.com-iperf_result.txt",
-                    "pc1.example.com-iperf_result.txt"]
+IDENTITY_TEST_FILES = ['lg1.example.com-iperf_result.txt',
+                    'pc1.example.com-iperf_result.txt']
 IDENTITY_THRESHOLD_CONSTRAINED = 200000
 IDENTITY_THRESHOLD_UNCONSTRAINED = 1000000
 
@@ -90,8 +109,8 @@ STATISTICAL_PLAYBOOK = 'nmeta-full-regression-statistical-template.yml'
 STATISTICAL_TCP_PORT = 5555
 STATISTICAL_PAUSE_SWITCH2CONTROLLER = 10
 STATISTICAL_SLEEP = 30
-STATISTICAL_TEST_FILES = ["pc1.example.com-iperf_result.txt",]
-STATISTICAL_THRESHOLD_CONSTRAINED = 280000
+STATISTICAL_TEST_FILES = ['pc1.example.com-iperf_result.txt',]
+STATISTICAL_THRESHOLD_CONSTRAINED = 400000
 STATISTICAL_THRESHOLD_UNCONSTRAINED = 1000000
 
 #*** Parameters for performance testing:
@@ -100,6 +119,7 @@ PERFORMANCE_TESTS = ['static', 'identity', 'statistical']
 PERFORMANCE_COUNT = 30
 PERFORMANCE_PLAYBOOK = 'nmeta-full-regression-performance-template.yml'
 PERFORMANCE_PAUSE_SWITCH2CONTROLLER = 10
+PERFORMANCE_HPING3_FILENAME = 'pc1.example.com-hping3_output.txt'
 PERFORMANCE_SLEEP = 30
 
 #*** Parameters for analysis of nmeta syslog events:
@@ -153,25 +173,28 @@ def main():
     logger.addHandler(logging_fh)
 
     #*** Capture environment settings:
-    regression_environment(logger, basedir)
-
-    #*** Run static regression testing:
-    regression_static(logger, basedir)
-
-    #*** Run identity regression testing:
-    regression_identity(logger, basedir)
-
-    #*** Run statistical regression testing:
-    regression_statistical(logger, basedir)
+    record_environment(logger, basedir)
 
     #*** Run performance baseline tests:
     regression_performance(logger, basedir)
+
+    #*** Run locations traffic classification testing:
+    test_locations_tc(logger, basedir)
+
+    #*** Run static traffic classification testing:
+    test_static_tc(logger, basedir)
+
+    #*** Run identity traffic classification testing:
+    test_identity_tc(logger, basedir)
+
+    #*** Run statistical regression testing:
+    test_statistical_tc(logger, basedir)
 
     #*** And we're done!:
     logger.info("All testing finished, that's a PASS!")
     logger.info("See test report at %s/%s", basedir, LOGGING_FILENAME)
 
-def regression_environment(logger, basedir):
+def record_environment(logger, basedir):
     """
     Capture details of the environment including info
     on the nmeta build
@@ -181,9 +204,81 @@ def regression_environment(logger, basedir):
                                                                 logger)
     os.system(playbook_cmd)
 
-def regression_static(logger, basedir):
+def test_locations_tc(logger, basedir):
     """
-    Nmeta static classification regression testing
+    Run nmeta locations traffic classification test(s)
+    """
+    logger.info("running locations regression testing")
+    subdir = 'locations'
+    #*** Create subdirectory to write results to:
+    os.chdir(basedir)
+    os.mkdir(subdir)
+    test_basedir = os.path.join(basedir, subdir)
+    #*** Run tests
+    for i in range(LOCATIONS_REPEATS):
+        logger.debug("iteration %s of %s", i+1, LOCATIONS_REPEATS)
+        for test in LOCATIONS_TESTS:
+            #*** Timestamp for specific test subdirectory:
+            timenow = datetime.datetime.now()
+            testdir_timestamp = timenow.strftime("%Y%m%d%H%M%S")
+            logger.info("running test=%s", test)
+            test_dir = os.path.join(test_basedir, test,
+                                                    testdir_timestamp)
+            rotate_log(logger)
+            if test == "lg1-constrained-bw":
+                policy_name = LOCATIONS_POLICY_1
+            elif test == "pc1-constrained-bw":
+                policy_name = LOCATIONS_POLICY_2
+            else:
+                logger.critical("ERROR: unknown locations test %s",
+                                                                   test)
+                sys.exit()
+            extra_vars = {'duration': str(LOCATIONS_DURATION),
+                        'results_dir': test_dir + "/",
+                        'policy_name': policy_name,
+                        'tcp_port': str(LOCATIONS_TCP_PORT),
+                        'pause1':
+                                str(LOCATIONS_PAUSE1_SWITCH2CONTROLLER),
+                        'pause3': str(LOCATIONS_PAUSE3_INTERTEST)}
+            playbook_cmd = build_playbook(LOCATIONS_PLAYBOOK,
+                                            extra_vars, logger)
+            logger.debug("running Ansible playbook for locations...")
+            os.system(playbook_cmd)
+
+            #*** Analyse locations regression results:
+            logger.debug("Reading results in directory %s", test_dir)
+            results = {}
+            for filename in LOCATIONS_TEST_FILES:
+                results[filename] = get_iperf_bw(test_dir, filename)
+
+            #*** Validate that the results are as expected:
+            if test == LOCATIONS_TESTS[0]:
+                constrained = results[LOCATIONS_TEST_FILES[0]]
+                unconstrained = results[LOCATIONS_TEST_FILES[1]]
+            elif test == LOCATIONS_TESTS[1]:
+                constrained = results[LOCATIONS_TEST_FILES[1]]
+                unconstrained = results[LOCATIONS_TEST_FILES[0]]
+            else:
+                #*** Unknown error condition:
+                logger.critical("UNKNOWN TEST TYPE. test=%s", test)
+                sys.exit("Please fix this test code. Exiting...")
+            logger.info("validating bw constrained=%s unconstrained=%s",
+                                             constrained, unconstrained)
+            assert constrained < LOCATIONS_THRESHOLD_CONSTRAINED
+            assert unconstrained > LOCATIONS_THRESHOLD_UNCONSTRAINED
+            logger.info("LOCATIONS TC TEST PASSED. test=%s", test)
+            logger.info("bandwidth constrained=%s unconstrained=%s",
+                                constrained, unconstrained)
+
+            #*** Check for any logs that are CRITICAL or ERROR:
+            check_log(logger, test_dir)
+
+            logger.debug("Sleeping... zzzz")
+            time.sleep(LOCATIONS_SLEEP)
+
+def test_static_tc(logger, basedir):
+    """
+    Run nmeta static traffic classification test(s)
     """
     logger.info("running static regression testing")
     subdir = 'static'
@@ -215,7 +310,7 @@ def regression_static(logger, basedir):
                         'pause1': str(STATIC_PAUSE_SWITCH2CONTROLLER)}
             playbook_cmd = build_playbook(STATIC_PLAYBOOK,
                                             extra_vars, logger)
-            logger.info("running Ansible playbook...")
+            logger.debug("running Ansible playbook...")
             os.system(playbook_cmd)
 
             #*** Analyse static regression results:
@@ -246,12 +341,12 @@ def regression_static(logger, basedir):
             #*** Check for any logs that are CRITICAL or ERROR:
             check_log(logger, test_dir)
 
-            logger.info("Sleeping... zzzz")
+            logger.debug("Sleeping... zzzz")
             time.sleep(STATIC_SLEEP)
 
-def regression_identity(logger, basedir):
+def test_identity_tc(logger, basedir):
     """
-    Nmeta identity classification regression testing
+    Run nmeta identity traffic classification test(s)
     """
     logger.info("running identity regression testing")
     subdir = 'identity'
@@ -287,7 +382,7 @@ def regression_identity(logger, basedir):
                         'pause3': str(IDENTITY_PAUSE3_INTERTEST)}
             playbook_cmd = build_playbook(IDENTITY_PLAYBOOK,
                                             extra_vars, logger)
-            logger.info("running Ansible playbook...")
+            logger.debug("running Ansible playbook...")
             os.system(playbook_cmd)
 
             #*** Analyse identity regression results:
@@ -318,12 +413,12 @@ def regression_identity(logger, basedir):
             #*** Check for any logs that are CRITICAL or ERROR:
             check_log(logger, test_dir)
 
-            logger.info("Sleeping... zzzz")
+            logger.debug("Sleeping... zzzz")
             time.sleep(IDENTITY_SLEEP)
 
-def regression_statistical(logger, basedir):
+def test_statistical_tc(logger, basedir):
     """
-    Nmeta statistical classification regression testing
+    Run nmeta statistical traffic classification test(s)
     """
     logger.info("running statistical regression testing")
     subdir = 'statistical'
@@ -358,7 +453,7 @@ def regression_statistical(logger, basedir):
                                str(STATISTICAL_PAUSE_SWITCH2CONTROLLER)}
             playbook_cmd = build_playbook(STATISTICAL_PLAYBOOK,
                                             extra_vars, logger)
-            logger.info("running Ansible playbook...")
+            logger.debug("running Ansible playbook...")
             os.system(playbook_cmd)
 
             #*** Analyse statistical regression results:
@@ -389,7 +484,7 @@ def regression_statistical(logger, basedir):
             #*** Check for any logs that are CRITICAL or ERROR:
             check_log(logger, test_dir)
 
-            logger.info("Sleeping... zzzz")
+            logger.debug("Sleeping... zzzz")
             time.sleep(STATISTICAL_SLEEP)
 
 def regression_performance(logger, basedir):
@@ -423,17 +518,20 @@ def regression_performance(logger, basedir):
                                str(PERFORMANCE_PAUSE_SWITCH2CONTROLLER)}
         playbook_cmd = build_playbook(PERFORMANCE_PLAYBOOK,
                                             extra_vars, logger)
-        logger.info("running Ansible playbook...")
+        logger.debug("running Ansible playbook...")
         os.system(playbook_cmd)
 
-        #*** Analyse performance results:
-
-        # TBD
+        #*** Read in and analyse hping3 RTT performance results:
+        rtt_results = hping3_read_results(os.path.join(test_dir,
+                                           PERFORMANCE_HPING3_FILENAME))
+        logger.debug("Performance results are %s", rtt_results)
+        rtt_avg = sum(rtt_results) / float(len(rtt_results))
+        logger.info("rtt_avg=%s rtt_max=%s", rtt_avg, max(rtt_results))
 
         #*** Check for any logs that are CRITICAL or ERROR:
         check_log(logger, test_dir)
 
-        logger.info("Sleeping... zzzz")
+        logger.debug("Sleeping... zzzz")
         time.sleep(PERFORMANCE_SLEEP)
 
 #==================== helper functions ====================
@@ -467,16 +565,48 @@ def build_playbook(playbook_name, extra_vars, logger):
     logger.debug("playbook_cmd=%s", playbook_cmd)
     return playbook_cmd
 
+def hping3_read_results(filename):
+    """
+    Passed a full path filename. Open this file and process
+    it line by line, accumulating valid RTT results into a
+    list and returning it
+    """
+    results = []
+    with open(filename, 'r') as filehandle:
+        for line in filehandle.readlines():
+            hping3_result = hping3_read_line(line)
+            if hping3_result:
+                results.append(hping3_result)
+    return results
+
+def hping3_read_line(hping3_line):
+    """
+    Passed a line from the hping3 output file and return the
+    result if it exists, otherwise 0.
+    """
+    #*** Extract hping3 time from the line:
+    #***  Example: len=46 ip=10.1.0.2 ttl=64 DF id=36185 sport=0
+    #***  flags=RA seq=6 win=0 rtt=9.1 ms
+    hping3_match = \
+                re.search(r"rtt=(\S+)", hping3_line)
+    if hping3_match:
+        result = hping3_match.groups()[0]
+        #*** Turn ms into seconds:
+        result = float(result) / 1000
+        return result
+    else:
+        return 0
+
 def rotate_log(logger):
     """
     Run an Ansible playbook to rotate the nmeta log
     so that it is fresh for analysis post test
     """
-    logger.info("Rotating nmeta syslog output for freshness")
+    logger.debug("Rotating nmeta syslog output for freshness")
     extra_vars = {}
     playbook_cmd = build_playbook(LOGROTATE_PLAYBOOK, extra_vars,
                                                                 logger)
-    logger.info("running Ansible playbook...")
+    logger.debug("running Ansible playbook...")
     os.system(playbook_cmd)
 
 def check_log(logger, test_dir):
@@ -484,12 +614,12 @@ def check_log(logger, test_dir):
     Check the nmeta log file to see if it has any log events that
     should cause the test to fail so that code can be fixed
     """
-    logger.info("Checking nmeta syslog for error or critical messages")
+    logger.debug("Checking nmeta syslog for error or critical messages")
     extra_vars = {'results_dir': test_dir + "/",
                 'error_filename': LOG_ERROR_FILENAME}
     playbook_cmd = build_playbook(LOGCHECK_PLAYBOOK, extra_vars,
                                                                 logger)
-    logger.info("running Ansible playbook...")
+    logger.debug("running Ansible playbook...")
     os.system(playbook_cmd)
     #*** Presence of non-zero file indicates ERROR and/or CRITICAL logs:
     error_file = os.path.join(test_dir, LOG_ERROR_FILENAME)
