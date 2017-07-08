@@ -118,7 +118,6 @@
     - name: Retrieve the Switch Flow Table
       fetch: src={{ results_dir }}/{{ inventory_hostname }}-lg1-flows.txt dest={{ results_dir }} flat=yes
 
-
 #*** Retrieve file that holds parameters that test was called with:
 
 - hosts: servers
